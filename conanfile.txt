@@ -1,9 +1,19 @@
 # Docs at https://docs.conan.io/en/latest/reference/conanfile_txt.html
 
 [requires]
+abseil/20211102.0
 catch2/2.13.9
 cli11/2.2.0
+fmt/8.1.1
+grpc/1.45.2
+openssl/1.1.1o
+protobuf/3.20.0
 spdlog/1.10.0
+trompeloeil/42
 
 [generators]
 cmake_find_package_multi
+
+[imports]
+bin, protoc* -> ./build_tools
+bin, grpc_cpp_plugin* -> ./build_tools

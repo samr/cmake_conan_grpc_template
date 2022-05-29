@@ -10,14 +10,17 @@ if(PROJECT_IS_TOP_LEVEL OR TEST_INSTALLED_VERSION)
   find_package(myproject CONFIG REQUIRED) # for intro, project_options, ...
 
   if(NOT TARGET myproject::project_options)
-    message(FATAL_ERROR "Requiered config package not found!")
+    message(FATAL_ERROR "Required config package not found!")
     return() # be strictly paranoid for Template Janitor github action! CK
   endif()
 endif()
 
 # ---- Dependencies ----
 
+find_package(absl CONFIG REQUIRED)
 find_package(Catch2 CONFIG REQUIRED)
+find_package(trompeloeil REQUIRED)
+find_package(gRPC REQUIRED)
 
 include(Catch)
 
@@ -35,8 +38,17 @@ add_test(NAME cli.has_help COMMAND intro --help)
 add_test(NAME cli.version_matches COMMAND intro --version)
 set_tests_properties(cli.version_matches PROPERTIES PASS_REGULAR_EXPRESSION "${PROJECT_VERSION}")
 
-add_executable(tests tests.cpp)
-target_link_libraries(tests PRIVATE myproject::project_warnings myproject::project_options catch_main)
+add_executable(tests tests.cpp ${HW_PROTO_SRCS} ${HW_GRPC_SRCS})
+
+target_link_libraries(
+  tests
+  PRIVATE gRPC::grpc++
+          myproject::project_warnings
+          myproject::project_options
+          trompeloeil::trompeloeil
+          catch_main)
+
+target_include_directories(tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/../generated")
 
 # automatically discover tests that are defined in catch based test files you can modify the unittests. Set TEST_PREFIX
 # to whatever you want, or use different for different binaries

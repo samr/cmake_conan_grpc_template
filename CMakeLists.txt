@@ -118,8 +118,7 @@ dynamic_project_options(
   --suppress=unmatchedSuppression
   --suppress=passedByValue
   --suppress=syntaxError
-  --inconclusive
-)
+  --inconclusive)
 
 target_compile_features(project_options INTERFACE cxx_std_${CMAKE_CXX_STANDARD})
 # TODO: The INTERFACE library NAMESPACE ALIAS are missing! CK
@@ -131,6 +130,51 @@ add_subdirectory(configured_files)
 
 # Adding the src:
 add_subdirectory(src)
+
+# Adding the generated files (e.g. proto and gRPC files):
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/generated)
+
+if(MSVC)
+  set(PROTOC build_tools/protoc.exe)
+  set(GRPC_PLUGIN build_tools/grpc_cpp_plugin.exe)
+else()
+  set(PROTOC build_tools/protoc)
+  set(GRPC_PLUGIN build_tools/grpc_cpp_plugin)
+endif()
+
+# Custom target for generating C++ gRPC files that other targets can depend on.
+# TODO: Maybe move this somewhere less central.
+set(HW_PROTOS helloworld.proto)
+set(HW_PROTO_SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/helloworld.pb.cc"
+    CACHE STRING "" FORCE)
+set(HW_PROTO_HDRS
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/helloworld.pb.h"
+    CACHE STRING "" FORCE)
+set(HW_GRPC_SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/helloworld.grpc.pb.cc"
+    CACHE STRING "" FORCE)
+set(HW_GRPC_HDRS
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/helloworld.grpc.pb.h"
+    CACHE STRING "" FORCE)
+
+message("Protoc compiler: ${Protobuf_PROTOC_EXECUTABLE}")
+add_custom_command(
+  OUTPUT "${HW_PROTO_SRCS}"
+         "${HW_PROTO_HDRS}"
+         "${HW_GRPC_SRCS}"
+         "${HW_GRPC_HDRS}"
+  COMMAND ${Protobuf_PROTOC_EXECUTABLE} ARGS --grpc_out "${CMAKE_CURRENT_BINARY_DIR}/generated" --cpp_out
+          "${CMAKE_CURRENT_BINARY_DIR}/generated" -I "../protos" --plugin=protoc-gen-grpc=${GRPC_PLUGIN} ${HW_PROTOS}
+  DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/../protos/${HW_PROTOS}
+  COMMENT "Invoking protoc to generate gRPC C++ files.")
+
+add_custom_target(
+  generate_grpc_files
+  DEPENDS "${HW_PROTO_SRCS}"
+          "${HW_PROTO_HDRS}"
+          "${HW_GRPC_SRCS}"
+          "${HW_GRPC_HDRS}")
 
 # Adding the tests:
 option(ENABLE_TESTING "Enable the tests" ${PROJECT_IS_TOP_LEVEL})
@@ -165,7 +209,11 @@ endif()
 
 # Add other targets that you want installed here, be default we just package the one executable
 # we know we want to ship
-package_project(TARGETS intro project_options project_warnings
+package_project(
+  TARGETS
+  intro
+  project_options
+  project_warnings
   # FIXME: this does not work! CK
   # PRIVATE_DEPENDENCIES_CONFIGURED project_options project_warnings
 )
