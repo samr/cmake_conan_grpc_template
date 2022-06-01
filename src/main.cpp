@@ -5,18 +5,16 @@
 #include <CLI/CLI.hpp>
 #include <spdlog/spdlog.h>
 
-#include <absl/strings/ascii.h>
-#include <absl/strings/match.h>
-
 // This file will be generated automatically when you run the CMake configuration step.
 // It creates a namespace called `cmake_conan_grpc_template`.
 // You can modify the source template at `configured_files/config.hpp.in`.
 #include <internal_use_only/config.hpp>
 
 // NOLINTNEXTLINE(bugprone-exception-escape)
-int main(int argc, const char** argv) {
+int main([[maybe_unused]] int argc, [[maybe_unused]] const char** argv) {
     try {
-        CLI::App app{fmt::format("{} version {}", myproject::cmake::project_name, myproject::cmake::project_version)};
+        CLI::App app{fmt::format("{} version {}", cmake_conan_grpc_template::cmake::project_name,
+                                 cmake_conan_grpc_template::cmake::project_version)};
 
         std::optional<std::string> message;
         app.add_option("-m,--message", message, "A message to print back out");
@@ -26,12 +24,9 @@ int main(int argc, const char** argv) {
         CLI11_PARSE(app, argc, argv);
 
         if (show_version) {
-            fmt::print("{}\n", myproject::cmake::project_version);
+            fmt::print("{}\n", cmake_conan_grpc_template::cmake::project_version);
             return EXIT_SUCCESS;
         }
-
-        // Use the default logger (stdout, multi-threaded, colored)
-        spdlog::info("Hello, {}!", "World");
 
         if (message) {
             fmt::print("Message: '{}'\n", *message);

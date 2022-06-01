@@ -13,9 +13,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # This means that all analysis (sanitizers, static analysis)
 # is enabled and all warnings are treated as errors
 # if you want to switch this behavior, change TRUE to FALSE
-set(ENABLE_DEVELOPER_MODE
-    TRUE
-    CACHE BOOL "Enable 'developer mode'")
+set(ENABLE_DEVELOPER_MODE TRUE CACHE BOOL "Enable 'developer mode'")
 
 # Change this to false if you want to disable warnings_as_errors in developer mode
 set(OPT_WARNINGS_AS_ERRORS_DEVELOPER_DEFAULT TRUE)
@@ -23,7 +21,7 @@ set(OPT_WARNINGS_AS_ERRORS_DEVELOPER_DEFAULT TRUE)
 # Add project_options v0.20.0
 # https://github.com/cpp-best-practices/project_options
 include(FetchContent)
-FetchContent_Declare(_project_options URL https://github.com/aminya/project_options/archive/refs/tags/v0.20.0.zip)
+FetchContent_Declare(_project_options URL https://github.com/aminya/project_options/archive/refs/tags/v0.22.2.zip)
 FetchContent_MakeAvailable(_project_options)
 include(${_project_options_SOURCE_DIR}/Index.cmake)
 
@@ -90,6 +88,7 @@ include(${_project_options_SOURCE_DIR}/src/DynamicProjectOptions.cmake)
 # for more flexibility, look into project_options() macro
 
 # Any default can be overridden
+# TODO: Figure out why (dynamic_)project_options is broken. I cannot set any variables to any effect.
 # set(<feature_name>_DEFAULT <value>) - set default for both user and developer modes
 # set(<feature_name>_DEVELOPER_DEFAULT <value>) - set default for developer mode
 # set(<feature_name>_USER_DEFAULT <value>) - set default for user mode
@@ -97,6 +96,7 @@ include(${_project_options_SOURCE_DIR}/src/DynamicProjectOptions.cmake)
 # Initialize project_options variable related to this project
 # This overwrites `project_options` and sets `project_warnings`
 # uncomment the options to enable them:
+# TODO: It would be nice to be able to toggle this per target. The static analyzers and protos do not play nice.
 dynamic_project_options(
   # Note: PCH is disabled by default in developer mode because these headers become
   # globally included and they can mask other errors
@@ -131,8 +131,14 @@ add_subdirectory(configured_files)
 # Adding the src:
 add_subdirectory(src)
 
+# ----------------------------------------------
+# Generate protos and build the proto_hw library
+
+set(PROTO_GEN_DIR "generated")
+set(PROTO_GEN_PATH ${CMAKE_CURRENT_BINARY_DIR}/${PROTO_GEN_DIR})
+
 # Adding the generated files (e.g. proto and gRPC files):
-file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/generated)
+file(MAKE_DIRECTORY ${PROTO_GEN_PATH})
 
 if(MSVC)
   set(PROTOC build_tools/protoc.exe)
@@ -142,32 +148,45 @@ else()
   set(GRPC_PLUGIN build_tools/grpc_cpp_plugin)
 endif()
 
+find_package(gRPC REQUIRED)
+find_package(protobuf REQUIRED)
+
+#TODO: Likely remove this line, it seems unnecessary.
+# set_target_properties(protobuf::libprotobuf PROPERTIES IMPORTED_GLOBAL TRUE)
+
 # Custom target for generating C++ gRPC files that other targets can depend on.
 # TODO: Maybe move this somewhere less central.
 set(HW_PROTOS helloworld.proto)
+
+# TODO: Automate the creation of these lists.
 set(HW_PROTO_SRCS
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/helloworld.pb.cc"
+  "${PROTO_GEN_PATH}/helloworld.pb.cc"
     CACHE STRING "" FORCE)
 set(HW_PROTO_HDRS
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/helloworld.pb.h"
+  "${PROTO_GEN_PATH}/helloworld.pb.h"
     CACHE STRING "" FORCE)
 set(HW_GRPC_SRCS
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/helloworld.grpc.pb.cc"
+  "${PROTO_GEN_PATH}/helloworld.grpc.pb.cc"
     CACHE STRING "" FORCE)
 set(HW_GRPC_HDRS
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/helloworld.grpc.pb.h"
+  "${PROTO_GEN_PATH}/helloworld.grpc.pb.h"
     CACHE STRING "" FORCE)
 
-message("Protoc compiler: ${Protobuf_PROTOC_EXECUTABLE}")
+message(STATUS "Protoc compiler: ${Protobuf_PROTOC_EXECUTABLE}")
+message(STATUS "gRPC plugin: ${GRPC_PLUGIN}")
+
 add_custom_command(
   OUTPUT "${HW_PROTO_SRCS}"
          "${HW_PROTO_HDRS}"
          "${HW_GRPC_SRCS}"
          "${HW_GRPC_HDRS}"
-  COMMAND ${Protobuf_PROTOC_EXECUTABLE} ARGS --grpc_out "${CMAKE_CURRENT_BINARY_DIR}/generated" --cpp_out
-          "${CMAKE_CURRENT_BINARY_DIR}/generated" -I "../protos" --plugin=protoc-gen-grpc=${GRPC_PLUGIN} ${HW_PROTOS}
+  COMMAND ${Protobuf_PROTOC_EXECUTABLE}
+  ARGS --grpc_out "${PROTO_GEN_PATH}"
+       --cpp_out "${PROTO_GEN_PATH}"
+       -I "../protos"
+       --plugin=protoc-gen-grpc=${GRPC_PLUGIN} ${HW_PROTOS}
   DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/../protos/${HW_PROTOS}
-  COMMENT "Invoking protoc to generate gRPC C++ files.")
+  COMMENT "Invoking protoc to generate gRPC C++ files. ${Protobuf_PROTOC_EXECUTABLE}")
 
 add_custom_target(
   generate_grpc_files
@@ -175,6 +194,33 @@ add_custom_target(
           "${HW_PROTO_HDRS}"
           "${HW_GRPC_SRCS}"
           "${HW_GRPC_HDRS}")
+
+set(CMAKE_CXX_CLANG_TIDY "")
+set(CMAKE_CXX_CPPCHECK "")
+
+add_library(proto_hw "${HW_PROTO_SRCS}" "${HW_GRPC_SRCS}")
+
+add_dependencies(proto_hw generate_grpc_files)
+
+set_source_files_properties(
+  "${HW_PROTO_SRCS}"
+  "${HW_GRPC_SRCS}"
+  PROPERTIES
+  GENERATED TRUE
+)
+
+target_link_libraries(proto_hw PRIVATE project_options project_warnings)
+
+target_include_directories(proto_hw
+  SYSTEM PUBLIC $<BUILD_INTERFACE:${PROTO_GEN_PATH}>
+                $<INSTALL_INTERFACE:include>
+  PRIVATE "${CMAKE_BINARY_DIR}/configured_files/include"
+)
+
+target_link_system_libraries(proto_hw
+  PRIVATE protobuf::libprotobuf
+          gRPC::grpc++
+  )
 
 # Adding the tests:
 option(ENABLE_TESTING "Enable the tests" ${PROJECT_IS_TOP_LEVEL})
@@ -211,7 +257,10 @@ endif()
 # we know we want to ship
 package_project(
   TARGETS
+  proto_hw
   intro
+  client_hw
+  server_hw
   project_options
   project_warnings
   # FIXME: this does not work! CK

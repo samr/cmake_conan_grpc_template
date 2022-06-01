@@ -1,9 +1,10 @@
 #include <grpcpp/grpcpp.h>
+#include <grpcpp/ext/proto_server_reflection_plugin.h>
 
 #include "helloworld.grpc.pb.h"
 
 class GreeterServiceImpl final : public helloworld::Greeter::Service {
-    grpc::Status SayHello(grpc::ServerContext*, const helloworld::HelloRequest* request,
+    grpc::Status SayHello(grpc::ServerContext* /*context*/, const helloworld::HelloRequest* request,
                           helloworld::HelloReply* reply) override {
         const std::string prefix("Hello ");
         reply->set_message(prefix + request->name());
@@ -16,7 +17,7 @@ void RunServer() {
     GreeterServiceImpl service;
 
     grpc::EnableDefaultHealthCheckService(true);
-    // grpc::reflection::InitProtoReflectionServerBuilderPlugin();
+    grpc::reflection::InitProtoReflectionServerBuilderPlugin();
     grpc::ServerBuilder builder;
     // Listen on the given address without any authentication mechanism.
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
@@ -32,8 +33,8 @@ void RunServer() {
     server->Wait();
 }
 
-// NOLINTNEXTLINE(bugprone-exception-escape)
-int main(int argc, const char** argv) {
+// NOLINTNEXTLINE(bugprone-exception-escape, clang-diagnostic-unused-parameter, misc-unused-parameters)
+int main([[maybe_unused]] int argc, [[maybe_unused]] const char** argv) {
     RunServer();
 
     return 0;
